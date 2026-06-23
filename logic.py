@@ -1,111 +1,67 @@
-class Node:
-    def __init__(self, value):
-        self.value = value
-        self.next = None
+class OfficialNode:
+    def __init__(self, obj_id, bribe):
+        self.id = obj_id
+        self.bribe = bribe
+        self.first_child = None
+        self.next_sibling = None
 
-class CustomStack:
+class MinistryTree:
     def __init__(self):
-        self.top = None
-        self._size = 0
+        self.nodes = {} 
+        self.root = None
 
-    def push(self, value):
-        new_node = Node(value)
-        new_node.next = self.top
-        self.top = new_node
-        self._size += 1
-
-    def pop(self):
-        if self.is_empty():
-            raise IndexError("Попытка извлечения из пустого стека")
-        value = self.top.value
-        self.top = self.top.next
-        self._size -= 1
-        return value
-
-    def is_empty(self):
-        return self.top is None
-
-class GameGraph:
-    def __init__(self):
-        self.adj = {}          # Список смежности: узел -> стек слов
-        self.in_degree = {}    # Входящие степени вершин
-        self.out_degree = {}   # Исходящие степени вершин
-        self.total_words = 0
-
-    def get_last_char(self, word):
-        if word.endswith('ь') and len(word) > 1:
-            return word[-2]
-        return word[-1]
-
-    def add_word(self, word):
-        word = word.lower().strip()
-        if not word:
-            return
-        
-        start_char = word[0]
-        end_char = self.get_last_char(word)
-        
-        if start_char not in self.adj:
-            self.adj[start_char] = CustomStack()
-        if end_char not in self.adj:
-            self.adj[end_char] = CustomStack()
+    def add_official(self, obj_id, boss_id, bribe):
+        if bribe < 0:
+            raise ValueError(f"Размер взятки не может быть отрицательным (ID: {obj_id}).")
             
-        self.adj[start_char].push(word)
-        
-        self.out_degree[start_char] = self.out_degree.get(start_char, 0) + 1
-        self.in_degree[end_char] = self.in_degree.get(end_char, 0) + 1
-        self.in_degree[start_char] = self.in_degree.get(start_char, 0)
-        self.out_degree[end_char] = self.out_degree.get(end_char, 0)
-        self.total_words += 1
+        new_node = OfficialNode(obj_id, bribe)
+        self.nodes[obj_id] = new_node
 
-    def check_eulerian_circuit(self):
-        for node in self.out_degree:
-            if self.in_degree.get(node, 0) != self.out_degree.get(node, 0):
-                return False
-        return True
-
-    def find_chain(self):
-        if self.total_words == 0:
-            return []
-            
-        if not self.check_eulerian_circuit():
-            raise ValueError("Цепочка невозможна: степени букв не совпадают.")
-
-        start_node = None
-        for node, count in self.out_degree.items():
-            if count > 0:
-                start_node = node
-                break
+        if boss_id == 0:
+            if self.root is not None:
+                raise ValueError("Обнаружено более одного главного чиновника.")
+            self.root = new_node
+        else:
+            if boss_id not in self.nodes:
+                self.nodes[boss_id] = OfficialNode(boss_id, 0)
                 
-        if not start_node:
-            return []
-
-        stack = CustomStack()
-        stack.push((start_node, None))
-        circuit_words = []
-        
-        while not stack.is_empty():
-            curr_node, _ = stack.top.value
-            
-            if curr_node in self.adj and not self.adj[curr_node].is_empty():
-                next_word = self.adj[curr_node].pop()
-                next_node = self.get_last_char(next_word)
-                stack.push((next_node, next_word))
+            boss_node = self.nodes[boss_id]
+            if boss_node.first_child is None:
+                boss_node.first_child = new_node
             else:
-                _, popped_edge = stack.pop()
-                if popped_edge is not None:
-                    circuit_words.append(popped_edge)
-                    
-        circuit_words.reverse()
-        
-        if len(circuit_words) != self.total_words:
-            raise ValueError("Цепочка невозможна: набор слов распадается на несвязные группы.")
-            
-        return circuit_words
+                current = boss_node.first_child
+                while current.next_sibling is not None:
+                    current = current.next_sibling
+                current.next_sibling = new_node
+                
+        if obj_id in self.nodes and self.nodes[obj_id].bribe == 0 and bribe != 0:
+            self.nodes[obj_id].bribe = bribe
 
-def process_words(words_list):
-    """Функция-фасад для вызова из main.py."""
-    graph = GameGraph()
-    for word in words_list:
-        graph.add_word(word)
-    return graph.find_chain()
+    def find_min_bribe_path(self):
+        if not self.root:
+            raise ValueError("В министерстве отсутствует главный чиновник (корень).")
+        cost, path = self._calculate_min_recursive(self.root)
+        return cost, path
+
+    def _calculate_min_recursive(self, node):
+        if not node:
+            return 0, []
+            
+        if node.first_child is None:
+            return node.bribe, [node.id]
+
+        min_child_cost = float('inf')
+        best_child_path = []
+
+        current_child = node.first_child
+        while current_child is not None:
+            child_cost, child_path = self._calculate_min_recursive(current_child)
+            if child_cost < min_child_cost:
+                min_child_cost = child_cost
+                best_child_path = child_path
+            current_child = current_child.next_sibling
+
+        total_cost = node.bribe + min_child_cost
+        best_child_path.append(node.id) 
+        
+        return total_cost, best_child_path
